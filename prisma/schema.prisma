@@ -1,0 +1,167 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum FamilyRole {
+  ADMIN
+  MEMBER
+}
+
+enum CategoryType {
+  INCOME
+  EXPENSE
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  BANK_TRANSFER
+  OTHER
+}
+
+enum DebtType {
+  I_OWE
+  THEY_OWE
+}
+
+enum DebtStatus {
+  PENDING
+  PAID
+  OVERDUE
+}
+
+model User {
+  id         String   @id @default(uuid())
+  telegramId BigInt   @unique
+  username   String?
+  firstName  String
+  lastName   String?
+  language   String   @default("uz")
+  currency   String   @default("UZS")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  memberships FamilyMember[]
+
+  @@index([telegramId])
+}
+
+model Family {
+  id        String   @id @default(uuid())
+  name      String
+  joinCode  String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members      FamilyMember[]
+  categories   Category[]
+  transactions Transaction[]
+  budgets      Budget[]
+  debts        Debt[]
+}
+
+model FamilyMember {
+  id          String     @id @default(uuid())
+  familyId    String
+  userId      String
+  displayName String
+  role        FamilyRole @default(MEMBER)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  family       Family        @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+  debts        Debt[]
+
+  @@unique([familyId, userId])
+  @@index([familyId])
+}
+
+model Category {
+  id        String       @id @default(uuid())
+  familyId  String
+  name      String
+  icon      String
+  type      CategoryType
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  family       Family        @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+  budgets      Budget[]
+
+  @@index([familyId])
+  @@index([familyId, type])
+}
+
+model Transaction {
+  id            String        @id @default(uuid())
+  familyId      String
+  memberId      String
+  categoryId    String
+  amount        Decimal       @db.Decimal(14, 2)
+  type          CategoryType
+  paymentMethod PaymentMethod @default(CASH)
+  description   String?
+  date          DateTime
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  family   Family       @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  member   FamilyMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  category Category     @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  @@index([familyId])
+  @@index([familyId, date])
+  @@index([familyId, type])
+  @@index([memberId])
+  @@index([categoryId])
+}
+
+model Budget {
+  id         String   @id @default(uuid())
+  familyId   String
+  categoryId String
+  amount     Decimal  @db.Decimal(14, 2)
+  month      String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  family   Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([familyId, categoryId, month])
+  @@index([familyId, month])
+}
+
+model Debt {
+  id          String     @id @default(uuid())
+  familyId    String
+  memberId    String
+  amount      Decimal    @db.Decimal(14, 2)
+  type        DebtType
+  status      DebtStatus @default(PENDING)
+  partyName   String
+  dueDate     DateTime?
+  description String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  // Set once the corresponding reminder has been sent, so the scheduler
+  // never notifies the family twice for the same debt.
+  reminderSentAt    DateTime?
+  overdueNotifiedAt DateTime?
+
+  family Family       @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  member FamilyMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@index([familyId])
+  @@index([familyId, status])
+  @@index([dueDate])
+}
