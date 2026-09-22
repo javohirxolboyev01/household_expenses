@@ -3,6 +3,15 @@ import { uz } from "../i18n/uz";
 import { FamilyService } from "../services/family.service";
 import { mainMenuKeyboard } from "../keyboards/main.keyboard";
 import { isValidJoinCode } from "../utils/validators";
+import { startHandler } from "../handlers/commands/start.handler";
+
+/** A command (starts with "/") or the persistent back button always means
+ * "let me out of here" — neither is ever valid free-text input in these
+ * onboarding flows, so treating them as an escape hatch is unambiguous. */
+function isEscapeAttempt(text: string): boolean {
+  const trimmed = text.trim();
+  return trimmed.startsWith("/") || trimmed === uz.common.back;
+}
 
 function profileFromCtx(ctx: MyContext) {
   if (!ctx.from) throw new Error("Foydalanuvchi ma'lumotlari topilmadi");
@@ -20,6 +29,11 @@ export async function createFamilyConversation(conversation: MyConversation, ctx
   let familyName = "";
   for (;;) {
     const { message } = await conversation.waitFor("message:text");
+    if (isEscapeAttempt(message.text)) {
+      await ctx.reply(uz.common.cancelled);
+      await startHandler(ctx);
+      return;
+    }
     familyName = message.text.trim().slice(0, 100);
     if (familyName.length > 0) break;
     await ctx.reply(uz.start.invalidFamilyName);
@@ -37,6 +51,11 @@ export async function joinFamilyConversation(conversation: MyConversation, ctx: 
 
   for (;;) {
     const { message } = await conversation.waitFor("message:text");
+    if (isEscapeAttempt(message.text)) {
+      await ctx.reply(uz.common.cancelled);
+      await startHandler(ctx);
+      return;
+    }
     const code = message.text.trim();
 
     if (!isValidJoinCode(code)) {
